@@ -48,6 +48,8 @@ int main(void)
     rbufeast = malloc(sizeof(double) * COUNT);
     rbufwest = malloc(sizeof(double) * COUNT);
 
+    MPI_Barrier(MPI_COMM_WORLD);
+
     if (south != MPI_PROC_NULL) {
         MPI_Send(sbufsouth, COUNT, MPI_INT, south, 0, MPI_COMM_WORLD);
     }

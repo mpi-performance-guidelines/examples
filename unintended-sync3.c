@@ -12,6 +12,7 @@ int main(void)
     int px = 3, py = 4; /* hardcoded 3x4 decomposition */
     int rx, ry;
     int north, south, east, west;
+    MPI_Request reqs[4];
 
     /* initialize MPI envrionment */
     MPI_Init(NULL, NULL);
@@ -50,15 +51,17 @@ int main(void)
 
     MPI_Barrier(MPI_COMM_WORLD);
 
+    MPI_Irecv(rbufnorth, COUNT, MPI_INT, north, 0, MPI_COMM_WORLD, &reqs[0]);
+    MPI_Irecv(rbufwest, COUNT, MPI_INT, west, 0, MPI_COMM_WORLD, &reqs[1]);
+    MPI_Irecv(rbufsouth, COUNT, MPI_INT, south, 0, MPI_COMM_WORLD, &reqs[2]);
+    MPI_Irecv(rbufeast, COUNT, MPI_INT, east, 0, MPI_COMM_WORLD, &reqs[3]);
+
     MPI_Send(sbufsouth, COUNT, MPI_INT, south, 0, MPI_COMM_WORLD);
     MPI_Send(sbufeast, COUNT, MPI_INT, east, 0, MPI_COMM_WORLD);
     MPI_Send(sbufnorth, COUNT, MPI_INT, north, 0, MPI_COMM_WORLD);
     MPI_Send(sbufwest, COUNT, MPI_INT, west, 0, MPI_COMM_WORLD);
 
-    MPI_Recv(rbufnorth, COUNT, MPI_INT, north, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-    MPI_Recv(rbufwest, COUNT, MPI_INT, west, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-    MPI_Recv(rbufsouth, COUNT, MPI_INT, south, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-    MPI_Recv(rbufeast, COUNT, MPI_INT, east, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    MPI_Waitall(4, reqs, MPI_STATUSES_IGNORE);
 
     free(sbufnorth);
     free(sbufsouth);
