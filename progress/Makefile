@@ -1,5 +1,5 @@
 CC=mpicc
-BINS=async1 async1-s
+BINS=async1 async1-s async2
 
 all: $(BINS)
 
