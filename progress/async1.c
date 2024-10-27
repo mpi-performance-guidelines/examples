@@ -7,6 +7,7 @@
 
 int main(void)
 {
+    double start, end;
     MPI_Request req;
     int rank, size;
     void *buf;
@@ -19,14 +20,28 @@ int main(void)
     
     if (rank == 0) {
 	MPI_Isend(buf, COUNT, MPI_BYTE, 1, 0, MPI_COMM_WORLD, &req);
+#ifdef SLEEP
+        usleep(100000);
+#elif defined(TEST)
+        int flag;
+        usleep(50000);
+        MPI_Test(&req, &flag, MPI_STATUS_IGNORE);
+        MPI_Test(&req, &flag, MPI_STATUS_IGNORE);
+        usleep(50000);
+#endif
     } else if (rank == 1) {
 	MPI_Irecv(buf, COUNT, MPI_BYTE, 0, 0, MPI_COMM_WORLD, &req);
     }
 
-#ifdef SLEEP
-    sleep(2);
-#endif
+    start = MPI_Wtime();
     MPI_Wait(&req, MPI_STATUS_IGNORE);
+    end = MPI_Wtime();
+    if (rank == 0) {
+        printf("send wait time %f\n", end - start);
+    }
+    if (rank == 1) {
+        printf("recv wait time %f\n", end - start);
+    }
 
     MPI_Finalize();
     return 0;
