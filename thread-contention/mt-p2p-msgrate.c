@@ -108,7 +108,6 @@ void do_msg_rate(int rank, int tid)
             MPI_Barrier(MPI_COMM_WORLD);
         }
         #pragma omp barrier
-        printf("finished iter %d\n", i);
     }
 
     if (rank == 0) {
