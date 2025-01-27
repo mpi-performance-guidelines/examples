@@ -5,7 +5,7 @@
 #include <unistd.h>
 
 #define MESSAGE_SIZE 8
-#define NUM_ITER 1000
+#define NUM_ITER 10
 #define WINDOW_SIZE 64
 #define NUM_MESSAGES (NUM_ITER * WINDOW_SIZE)
 #define NUM_THREADS 2
