@@ -1,29 +1,28 @@
 #include <mpi.h>
+#include <omp.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <assert.h>
-#include <omp.h>
-
-/* Alignment prevents either false-sharing on the CPU or serialization in the
- * NIC's parallel TLB engine. Using page size for optimum results. */
-#define BUFFER_ALIGNMENT 4096
+#include <unistd.h>
 
 #define MESSAGE_SIZE 8
-#define NUM_MESSAGES 64000
+#define NUM_ITER 1000
 #define WINDOW_SIZE 64
+#define NUM_MESSAGES (NUM_ITER * WINDOW_SIZE)
 #define NUM_THREADS 2
 
 MPI_Comm t_comms[NUM_THREADS];
 double t_elapsed[NUM_THREADS];
 void *t_bufs[NUM_THREADS];
-
-static void msgrate_test(int rank, int tid);
+void do_msg_rate(int rank, int tid);
 
 int main(void)
 {
+    double msg_rate;
     int rank, size;
     int provided;
-    double msg_rate;
+    /* Alignment prevents either false-sharing on the CPU or serialization in the
+     * NIC's parallel TLB engine. Use page size to be safe. */
+    int buffer_align = sysconf(_SC_PAGESIZE);
 
     MPI_Init_thread(NULL, NULL, MPI_THREAD_MULTIPLE, &provided);
 
@@ -42,20 +41,20 @@ int main(void)
     /* allocate per thread resources */
     for (int i = 0; i < NUM_THREADS; i++) {
         MPI_Comm_dup(MPI_COMM_WORLD, &t_comms[i]);
-        posix_memalign(&t_bufs[i], BUFFER_ALIGNMENT, MESSAGE_SIZE);
+        posix_memalign(&t_bufs[i], buffer_align, MESSAGE_SIZE);
     }
 
-    /* Run test with 1 thread */
-    msgrate_test(rank, 0);
+    /* run with 1 thread */
+    do_msg_rate(rank, 0);
     msg_rate = ((double) NUM_MESSAGES / t_elapsed[0]) / 1e6;
 
-    /* Run test with multiple threads */
+    /* run with multiple threads */
 #pragma omp parallel num_threads(NUM_THREADS)
     {
-        msgrate_test(rank, omp_get_thread_num());
+        do_msg_rate(rank, omp_get_thread_num());
     }
 
-    /* Calculate message rate with multiple threads */
+    /* calculate message rate */
     if (rank == 0) {
         double mt_msg_rate;
         printf("Number of messages: %d\n", NUM_MESSAGES);
@@ -84,31 +83,32 @@ int main(void)
     return 0;
 }
 
-static void msgrate_test(int rank, int tid)
+void do_msg_rate(int rank, int tid)
 {
     MPI_Comm my_comm = t_comms[tid];
     void *buf = t_bufs[tid];
-    int win_i, win_post_i, win_posts;
     MPI_Request requests[WINDOW_SIZE];
     double t_start, t_end;
 
-    win_posts = NUM_MESSAGES / WINDOW_SIZE;
-    assert(win_posts * WINDOW_SIZE == NUM_MESSAGES);
-
-    /* Benchmark */
     if (rank == 0) {
         t_start = MPI_Wtime();
     }
 
-    for (win_post_i = 0; win_post_i < win_posts; win_post_i++) {
-        for (win_i = 0; win_i < WINDOW_SIZE; win_i++) {
+    for (int i = 0; i < NUM_ITER; i++) {
+        for (int j = 0; j < WINDOW_SIZE; j++) {
             if (rank == 0) {
-                MPI_Isend(buf, MESSAGE_SIZE, MPI_CHAR, 1, tid, my_comm, &requests[win_i]);
+                MPI_Isend(buf, MESSAGE_SIZE, MPI_BYTE, 1, 0, my_comm, &requests[j]);
             } else {
-                MPI_Irecv(buf, MESSAGE_SIZE, MPI_CHAR, 0, tid, my_comm, &requests[win_i]);
+                MPI_Irecv(buf, MESSAGE_SIZE, MPI_BYTE, 0, 0, my_comm, &requests[j]);
             }
         }
         MPI_Waitall(WINDOW_SIZE, requests, MPI_STATUSES_IGNORE);
+        #pragma omp master
+        {
+            MPI_Barrier(MPI_COMM_WORLD);
+        }
+        #pragma omp barrier
+        printf("finished iter %d\n", i);
     }
 
     if (rank == 0) {
