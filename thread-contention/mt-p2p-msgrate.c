@@ -13,7 +13,7 @@
 MPI_Comm t_comms[NUM_THREADS];
 double t_elapsed[NUM_THREADS];
 void *t_bufs[NUM_THREADS];
-void do_msg_rate(int rank, int tid);
+void do_msg_rate(int rank, int n);
 
 int main(void)
 {
@@ -24,13 +24,12 @@ int main(void)
      * NIC's parallel TLB engine. Use page size to be safe. */
     int buffer_align = sysconf(_SC_PAGESIZE);
 
+    /* setup MPI */
     MPI_Init_thread(NULL, NULL, MPI_THREAD_MULTIPLE, &provided);
-
     if (provided != MPI_THREAD_MULTIPLE) {
         fprintf(stderr, "MPI_THREAD_MULTIPLE required for this test.\n");
         MPI_Abort(MPI_COMM_WORLD, 1);
     }
-
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     if (size != 2) {
@@ -45,14 +44,11 @@ int main(void)
     }
 
     /* run with 1 thread */
-    do_msg_rate(rank, 0);
+    do_msg_rate(rank, 1);
     msg_rate = ((double) NUM_MESSAGES / t_elapsed[0]) / 1e6;
 
     /* run with multiple threads */
-#pragma omp parallel num_threads(NUM_THREADS)
-    {
-        do_msg_rate(rank, omp_get_thread_num());
-    }
+    do_msg_rate(rank, NUM_THREADS);
 
     /* calculate message rate */
     if (rank == 0) {
@@ -74,6 +70,7 @@ int main(void)
                mt_msg_rate);
     }
 
+    /* free resources */
     for (int i = 0; i < NUM_THREADS; i++) {
         MPI_Comm_free(&t_comms[i]);
         free(t_bufs[i]);
@@ -83,35 +80,38 @@ int main(void)
     return 0;
 }
 
-void do_msg_rate(int rank, int tid)
+void do_msg_rate(int rank, int n)
 {
-    MPI_Comm my_comm = t_comms[tid];
-    void *buf = t_bufs[tid];
-    MPI_Request requests[WINDOW_SIZE];
-    double t_start, t_end;
+#pragma omp parallel num_threads(n)
+    {
+        int tid = omp_get_thread_num();
+#ifdef SINGLECOMM
+        MPI_Comm comm = MPI_COMM_WORLD;
+#else
+        MPI_Comm comm = t_comms[tid];
+#endif
+        void *buf = t_bufs[tid];
+        MPI_Request requests[WINDOW_SIZE];
+        double t_start, t_end;
 
-    if (rank == 0) {
-        t_start = MPI_Wtime();
-    }
+        if (rank == 0) {
+            t_start = MPI_Wtime();
+        }
 
-    for (int i = 0; i < NUM_ITER; i++) {
-        for (int j = 0; j < WINDOW_SIZE; j++) {
-            if (rank == 0) {
-                MPI_Isend(buf, MESSAGE_SIZE, MPI_BYTE, 1, 0, my_comm, &requests[j]);
-            } else {
-                MPI_Irecv(buf, MESSAGE_SIZE, MPI_BYTE, 0, 0, my_comm, &requests[j]);
+        for (int i = 0; i < NUM_ITER; i++) {
+            for (int j = 0; j < WINDOW_SIZE; j++) {
+                if (rank == 0) {
+                    MPI_Isend(buf, MESSAGE_SIZE, MPI_BYTE, 1, 0, comm, &requests[j]);
+                } else {
+                    MPI_Irecv(buf, MESSAGE_SIZE, MPI_BYTE, 0, 0, comm, &requests[j]);
+                }
             }
+            MPI_Waitall(WINDOW_SIZE, requests, MPI_STATUSES_IGNORE);
         }
-        MPI_Waitall(WINDOW_SIZE, requests, MPI_STATUSES_IGNORE);
-        #pragma omp master
-        {
-            MPI_Barrier(MPI_COMM_WORLD);
-        }
-        #pragma omp barrier
-    }
 
-    if (rank == 0) {
-        t_end = MPI_Wtime();
-        t_elapsed[tid] = t_end - t_start;
+        if (rank == 0) {
+            t_end = MPI_Wtime();
+            t_elapsed[tid] = t_end - t_start;
+        }
     }
 }
