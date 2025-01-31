@@ -111,7 +111,7 @@ int main(void)
     free(sreqs);
     MPI_Reduce(&total_time, &avg_time, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
     if (wrank == 0) {
-        printf("avg ibarrier time = %f\n", avg_time / wsize);
+        printf("avg nonblocking census time = %f\n", avg_time / wsize);
     }
 
     MPI_Finalize();
