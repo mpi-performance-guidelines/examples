@@ -26,8 +26,6 @@ int main(void)
         MPI_Abort(MPI_COMM_WORLD, 1);
     }
 
-    srand(rank); /* setup for rand() usage */
-
     /* send and recv bufs used for both implementations */
     double *sendbuf = malloc(sizeof(double) * NUM_DOUBLES * wsize);
     double *recvbuf = malloc(sizeof(double) * NUM_DOUBLES * wsize);
@@ -122,6 +120,11 @@ int main(void)
 
 static int *get_neighbors(int *num_neighbors)
 {
+    static int is_first = 1;
+    if (is_first) {
+        srand(wrank);
+    }
+
     int n = wsize / 10;
     int *neighbors = malloc(sizeof(int) * n);
 
